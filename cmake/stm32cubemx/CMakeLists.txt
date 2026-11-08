@@ -78,6 +78,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${MX_Application_Src}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/uart.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/can.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/spi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/bme280.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/i2c1.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/lsm6ds3.c
+    
 )
 
 # Link directories setup

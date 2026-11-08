@@ -26,6 +26,13 @@ bool can1_enter_init(void)
 void can1_configure_loopback(void){
     CAN1->BTR = 3u | (15u << 16) | (3u <<20) | (1u << 30) | (1u << 31);
 }
+void can1_configure_500k_normal(void)
+{
+    CAN1->BTR =
+        3u |
+        (15u << 16u) |
+        (3u << 20u);
+}
 
 void can1_configure_filter(void)
 {

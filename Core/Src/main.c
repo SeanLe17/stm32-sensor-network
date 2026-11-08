@@ -25,6 +25,13 @@
 #include "uart.h"
 #include <string.h>
 #include "can.h"
+#include "spi.h"
+#include "bme280.h"
+
+#define NODE_A_TRANSMITTER  1u
+#define NODE_B_RECEIVER     2u
+
+#define NODE_ROLE NODE_A_TRANSMITTER
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -104,6 +111,16 @@ static bool can1_loopback_test(void)
 }
 
 
+static void uart2_write_hex32(uint32_t value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+
+    for (int shift = 28; shift >= 0; shift -= 4)
+    {
+        uart2_write_char(digits[(value >> shift) & 0xFu]);
+    }
+}
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -136,6 +153,38 @@ int main(void)
   uart2_init();
   /* USER CODE BEGIN 2 */
 
+uart2_write_string("Boot\r\n");
+
+spi2_init();
+uart2_write_string("SPI init\r\n");
+
+bme280_init();
+uart2_write_string("BME280 init\r\n");
+
+uint32_t raw_pressure;
+uint32_t raw_temperature;
+uint16_t raw_humidity;
+
+if (bme280_read_raw(&raw_pressure, &raw_temperature, &raw_humidity))
+{
+    uart2_write_string("BME raw read PASS\r\n");
+}
+else
+{
+    uart2_write_string("BME raw read FAIL\r\n");
+}
+
+uart2_write_string("P=0x");
+uart2_write_hex32(raw_pressure);
+
+uart2_write_string(" T=0x");
+uart2_write_hex32(raw_temperature);
+
+uart2_write_string(" H=0x");
+uart2_write_hex32(raw_humidity);
+
+uart2_write_string("\r\n");
+
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
 GPIO_InitTypeDef can_pins = {0};
@@ -159,31 +208,22 @@ HAL_GPIO_Init(GPIOB, &can_pins);
   HAL_GPIO_Init(GPIOA, &led_config);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
+if (!can1_enter_init())
+{
+    uart2_write_string("CAN: init timeout\r\n");
+    Error_Handler();
+}
 
-  if (can1_enter_init())
-  {
-      uart2_write_string("CAN: entered configuration mode\r\n");
+can1_configure_500k_normal();
+can1_configure_filter();
 
-      can1_configure_loopback();
-      can1_configure_filter();
+if (!can1_start())
+{
+    uart2_write_string("CAN: start timeout\r\n");
+    Error_Handler();
+}
 
-      if (can1_start())
-      {
-          uart2_write_string("CAN: loopback ready\r\n");
-      }
-      else
-      {
-          uart2_write_string("CAN: start timed out\r\n");
-      }
-      if(can1_loopback_test())
-      {
-        uart2_write_string("CAN: loopback successful!\r\n");
-      }
-  }
-  else
-  {
-      uart2_write_string("CAN: configuration entry timed out\r\n");
-  }
+uart2_write_string("CAN: normal mode ready\r\n");
 
 
   uint32_t last_toggle = HAL_GetTick();
@@ -196,42 +236,48 @@ HAL_GPIO_Init(GPIOB, &can_pins);
   /* USER CODE BEGIN WHILE */
  while (1)
 {
-    char received;
+   #if NODE_ROLE == NODE_A_TRANSMITTER
 
-    if (uart2_pop(&received))
+    static uint32_t last_can_tx = 0u;
+    static uint16_t sequence = 0u;
+
+    if ((HAL_GetTick() - last_can_tx) >= 100u)
     {
-        if (received == '\r')
-        {
-            // Ignore carriage return.
-        }
-        else if (received == '\n')
-        {
-            if (discard_line)
-            {
-                uart2_write_string("Command too long\r\n");
-            }
-            else if (command_length > 0u)
-            {
-                command[command_length] = '\0';
-                handle_command(command);
-            }
+        CanFrame frame;
 
-            command_length = 0;
-            discard_line = false;
-        }
-        else if (!discard_line)
+        frame.id = 0x120u;
+        frame.length = 4u;
+
+        frame.data[0] = (uint8_t)(sequence & 0xFFu);
+        frame.data[1] = (uint8_t)(sequence >> 8u);
+        frame.data[2] = 0xA5u;
+        frame.data[3] = 0x5Au;
+
+        if (can1_try_send(&frame))
         {
-            if (command_length < sizeof(command) - 1u)
-            {
-                command[command_length] = received;
-                command_length++;
-            }
-            else
-            {
-                discard_line = true;
-            }
+            sequence++;
+        }
+
+        last_can_tx = HAL_GetTick();
+    }
+
+#elif NODE_ROLE == NODE_B_RECEIVER
+    
+    CanFrame received;
+
+    if (can1_try_receive(&received))
+    {
+        if ((received.id == 0x120u) && (received.length == 4u))
+        {
+            uart2_write_string("CAN RX\r\n");
+        }
+        else
+        {
+            uart2_write_string("Unexpected CAN frame\r\n");
         }
     }
+
+#endif
 }
   /* USER CODE END 3 */
 }

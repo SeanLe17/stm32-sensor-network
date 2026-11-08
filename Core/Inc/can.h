@@ -21,5 +21,6 @@ bool can1_start(void);
 bool can1_try_send(const CanFrame *frame);
 
 bool can1_try_receive(CanFrame *out);
+void can1_configure_500k_normal(void);
 
 #endif
