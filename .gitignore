@@ -1,0 +1,20 @@
+# Generated build output
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Firmware build artifacts
+*.elf
+*.bin
+*.hex
+*.map
+
+# Editor / OS files
+.vscode/ipch/
+.vscode/.browse.*
+.DS_Store
+Thumbs.db
